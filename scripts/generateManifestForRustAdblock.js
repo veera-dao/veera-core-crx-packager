@@ -18,25 +18,13 @@ const defaultAdblockBase64PublicKey =
     '5HcH/heRrB4MvrE1J76WF3fvZ03aHVcnlLtQeiNNOZ7VbBDXdie8Nomf/QswbBGa' +
     'VwIDAQAB'
 
-const defaultPlaintextComponentId = 'iodkpdagapdfkphljnddpjlldadblomo'
+const defaultPlaintextComponentId = 'odpnapfkaokbkpaioolplidccdliihbd'
 const defaultPlaintextPubkey =
-    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsD/B/MGdz0gh7WkcFARn' +
-    'ZTBX9KAw2fuGeogijoI+fET38IK0L+P/trCT2NshqhRNmrDpLzV2+Dmes6PvkA+O' +
-    'dQkUV6VbChJG+baTfr3Oo5PdE0WxmP9Xh8XD7p85DQrk0jJilKuElxpK7Yq0JhcT' +
-    'Sc3XNHeTwBVqCnHwWZZ+XysYQfjuDQ0MgQpS/s7U04OZ63NIPe/iCQm32stvS/pE' +
-    'ya7KdBZXgRBQ59U6M1n1Ikkp3vfECShbBld6VrrmNrl59yKWlEPepJ9oqUc2Wf2M' +
-    'q+SDNXROG554RnU4BnDJaNETTkDTZ0Pn+rmLmp1qY5Si0yGsfHkrv3FS3vdxVozO' +
-    'PQIDAQAB'
+    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvv5iF3UhvBZ0BqN0dsu6hvSjs7EgPkoZO9jVTycuJLanImvAmPUYZCgMBZOhahfW2ehs0A497Sv+r/FfHrhshO+B6jXufg+OOKunC+bC7OwNionyC4BNqj71bpnly6J0VzBhy/CoITcaHZ+ZimJ8n8KyCAm2DQ9IVidSfabBi0e6YOS1NgHza2dh+eYHsXWDTGa2hFYerBDL68Yd8ukxFkb6/NAu0+KPIhbWJVRVqTVIm4YGW7kiEteyYmj4N7E2UqRcdXpAiFrmW7L+U/84MwgSsvwJUdjsfVnSOAUhgiK+qXYosXfmhhs+5+cCEByjN6+k/sbhL3nVCSKJW7/5ewIDAQAB'
 
-const exceptionPlaintextComponentId = 'adcocjohghhfpidemphmcmlmhnfgikei'
+const exceptionPlaintextComponentId = 'fnolcdcbgpehmhjokidfcjdnkldfbfnn'
 const exceptionPlaintextPubkey =
-    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtvmLp4MOseThuH/vFSc7' +
-    'kjr+CDCzR/ieGI8TJZyFQhzA1SKWRl4y0wB+HGkmoq0KPOzKNZq6hxK7jdm/r/nx' +
-    'xOjqutPoUEL+ysxePErMTse2XeWu3psGSTEjPFdQTPEwH8MF2SwXXneOraD0V/GS' +
-    'iCCvlx8yKIXNX7V9ujMo+QoD6hPGslKUZQJAg+OaZ7pAfq5cOuWXNN6jv12UL0eM' +
-    't6Dhl31yEu4kZWeTkiccHqdlB/KvPiqXTrV+qd3Tjvsk6kmUlexu3/zlOwVDz5H/' +
-    'kPuOGvW7kYaW22NWQ9TH6fjffgVcSgHDbZETDiP8fHd76kyi1SZ5YJ09XHTE+i9i' +
-    'kQIDAQAB'
+    'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtNimUg+LchwLwAflRBlgzZe64O57AiHfFZsAKVDXCd0IpCwQxK22YQUYo0h1nHf/zpZJTxQnRpzy0J00mlA87R83mZuzV3bx3pp0+Rx/+8oxtTFOwvyu029TVZKrvqYGhQ2puPmH7mBG5q6KG9tlS0nfGWgAR9fb+tZed9JoPpsVP5+zE8z0IYeDQvTaP6kBZiN6Xrhaq8NAcETu7WWBm5zX8Aeq/Ga8vd6EjBeF5T/7hLDQKEaIlGiYq5gpiGbOXU/drB35WlHVXQIO7QcXqT4aUpg65emEr3Si4mBbnYSqwaZwjWnwiiY0EeZApU2M6q5DOeg6YNEVIjEVGhL0TwIDAQAB'
 
 const generateManifestFile = async (name, base64PublicKey, uuid) => {
   const manifest = '{\n' +

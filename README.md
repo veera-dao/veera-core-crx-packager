@@ -1,6 +1,6 @@
-# Brave Core CRX Packager
+# Veera Core CRX Packager
 
-The CRX Packager creates and packages CRX files for the components and extensions included with the Brave browser.
+The CRX Packager creates and packages CRX files for the components and extensions included with the Veera browser.
 
 ## Development
 

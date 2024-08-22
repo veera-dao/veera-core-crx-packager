@@ -1,6 +1,10 @@
-# Brave Core CRX Packager
+# Veera Core CRX Packager
+This Repository is cloned from and changes are made as per Veera's Requirement for componenets for supporting its browser
+```bash
+https://github.com/brave/brave-core-crx-packager
+``` 
 
-The CRX Packager creates and packages CRX files for the components and extensions included with the Brave browser.
+The CRX Packager creates and packages CRX files for the components and extensions included with the Veera browser.
 
 ## Development
 
@@ -10,7 +14,7 @@ When developing a new component extension, you must generate a new unique extens
 2. Storing the new PEM in 1Password for Teams
 3. Generating the public key for the `manifest.json` with `openssl rsa -in key.pem -pubout -outform DER | openssl base64 -A`
 4. Generating the component ID with `openssl rsa -in key.pem -pubout -outform DER | shasum -a 256 | head -c32 | tr 0-9a-f a-p`
-5. Updating https://github.com/brave/adblock-resources/blob/master/filter_lists/regional.json with the right component_id and base64_public_key (if this is for AdBlock)
+5. Updating https://github.com/veera-dao/adblock-resources/blob/master/filter_lists/regional.json with the right component_id and base64_public_key (if this is for AdBlock)
 5. Updating the CRX packager to use the new PEM
 
 ## Cloning and Installation
@@ -18,8 +22,8 @@ When developing a new component extension, you must generate a new unique extens
 Clone the repository and install Node dependencies:
 
 ```bash
-git clone git@github.com:brave/brave-core-crx-packager.git
-cd brave-core-crx-packager
+git clone git@github.com:veera/veera-core-crx-packager.git
+cd veera-core-crx-packager
 git submodule init
 git submodule update
 # If you use NVM to switch between Node versions
@@ -116,7 +120,7 @@ aws-vault exec extensions-dev-role --  npm run generate-puffpatches -- --crx-dir
 
 ## Uploading
 
-After packaging a CRX file, you can upload it to Brave's S3 extensions bucket (`brave-extensions`).
+After packaging a CRX file, you can upload it to Brave's S3 extensions bucket (`veera-core-ext`).
 
 ### Component Extensions
 
@@ -156,12 +160,12 @@ role_arn = arn:aws:iam::XXXXXXXXXXXX:role/extensions-dev-developer-role
 mfa_serial = arn:aws:iam::XXXXXXXXXXXX:mfa/dev
 ```
 ```
-aws-vault exec extensions-dev-role -- aws s3 cp --recursive iso_3166_1_gb s3://brave-user-model-installer-input-dev/iso_3166_1_gb/ 
+aws-vault exec extensions-dev-role -- aws s3 cp --recursive iso_3166_1_gb s3://veera-user-model-installer-input-dev/iso_3166_1_gb/ 
 ```
 or update the AWS CLI config file to use [`credential_process`](https://docs.aws.amazon.com/cli/latest/topic/config-vars.html#sourcing-credentials-from-external-processes) attribute to reference [`aws-vault` profile](https://github.com/99designs/aws-vault/blob/master/USAGE.md#using-credential_process):
 ```
 [profile dev]
-region = us-west-2
+region = ap-south-1
 credential_process = aws-vault exec --no-session --json dev
 
 [profile extensions-dev-role]
@@ -181,11 +185,6 @@ aws exec extensions-dev-role -- npm run upload-user-model-installer-updates -- -
 ## Versioning
 
 Versioning occurs automatically. The first time an extension is packaged, it receives the version number `1.0.0`. When uploaded, that version number along with other metadata is stored in DynamoDB. Subsequent packagings increment the last component of the version number by one.
-
-## S3 Credentials
-
-Uploading to S3 requires that you create appropriately provisioned AWS credentials. Once provisioned, you can make your credentials accessible to this script via [`aws-vault`](https://github.com/brave/devops/wiki/Developing-With-AWS-Access-Keys#aws-access-key-management).
-
 
 ## Troubleshooting
 

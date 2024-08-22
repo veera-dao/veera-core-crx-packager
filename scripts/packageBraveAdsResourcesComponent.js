@@ -4,9 +4,8 @@
 
 import commander from 'commander'
 import fs from 'fs-extra'
-import mkdirp from 'mkdirp'
+import { mkdirp } from 'mkdirp'
 import path from 'path'
-import replace from 'replace-in-file'
 import util from '../lib/util.js'
 
 const getComponentDataList = () => {
@@ -230,33 +229,16 @@ const getComponentDataList = () => {
       locale: 'iso_3166_1_vn',
       key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAn7qnkDAbGtBoBl4wIMmu4n1T/VkJXh9EA8wRfbkMSTBe8y4SvOtAPCEi6PA08OlQZg1wZmSdjHlXb7z6Uze7DTXN1go9GYm08sqk2vdgceobNNKxebnitQKzfrQRZOsSG4R+whkC8X8CQnuNydIV3nH/DxEhgH11kqJhjoFg5wZzvSP8KmTv3JtW84W+n4pZHlbHqeQGx9xqnrJJ0f+IGb8uSRM1H1o3/08ZUvf417g6ci2MhLBSn4fTwfsiZqLLjPx8/z4zBm4MWQIBpqBy7vLGOU+6AGy0TWpWKtg9fsBuBcDiywskbHyGWuYkSOyQ4VKc+JIKRwC+lUnPcqcjYQIDAQAB',
       id: 'jcffalbkohmmfjmgkdcphlimplejkmon'
-    },
-    {
-      locale: 'iso_639_1_en',
-      key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAp3999qnB5RBaRYj2VwIgbHUyPrfwXsFVn8apmCcT23UHO33cAGHDVKSKvmpXn1L+jBfThPjY9EtW5yA1+6tmC7iJIesJjWbM/G/JA9Btc6f58a0xuPa86goCM10/EocttsoheOzi7A4DUGqCAhBh2HwhzRWxmJnYURtYJz5jX+gLbE8m0mxHZLktKIBPVqw3CbKeWN5kU1Pppg+Wh/xdTxOXhwBo6MNWog+oZEzSSvJ5zY1/vfX0VIMVYiHyNFvyNf5Bdu7aK9PDj3iQs6s5Ru7ahAQg2RglbvI7Axr4eSgKaxg6k/n6h83ltWdAoZqwbC07U0NIb9MtXmZLU76+OwIDAQAB',
-      id: 'ocilmpijebaopmdifcomolmpigakocmo'
     }
   ]
 }
 
 const stageFiles = (locale, version, outputDir) => {
-  // Copy resources and manifest file to outputDir.
-  // Copy resource files
-  const resourceDir = path.join(path.resolve(), 'build', 'user-model-installer', 'resources', locale, '/')
-  console.log('copy dir:', resourceDir, ' to:', outputDir)
-  fs.copySync(resourceDir, outputDir)
-
-  // Fix up the manifest version
-  const originalManifest = getOriginalManifest(locale)
-  const outputManifest = path.join(outputDir, 'manifest.json')
-  console.log('copy manifest file: ', originalManifest, ' to: ', outputManifest)
-  const replaceOptions = {
-    files: outputManifest,
-    from: /0\.0\.0/,
-    to: version
-  }
-  fs.copyFileSync(originalManifest, outputManifest)
-  replace.sync(replaceOptions)
+  util.stageDir(
+    path.join(path.resolve(), 'build', 'user-model-installer', 'resources', locale, '/'),
+    getOriginalManifest(locale),
+    version,
+    outputDir)
 }
 
 const generateManifestFile = (componentData) => {
@@ -286,7 +268,7 @@ const getOriginalManifest = (locale) => {
 }
 
 const generateCRXFile = (binary, endpoint, region, keyDir, publisherProofKey,
-  componentData) => {
+  publisherProofKeyAlt, componentData) => {
   const locale = componentData.locale
   const rootBuildDir = path.join(path.resolve(), 'build', 'user-model-installer')
   const stagingDir = path.join(rootBuildDir, 'staging', locale)
@@ -298,7 +280,7 @@ const generateCRXFile = (binary, endpoint, region, keyDir, publisherProofKey,
     const privateKeyFile = path.join(keyDir, `user-model-installer-${locale}.pem`)
     stageFiles(locale, version, stagingDir)
     util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey,
-      stagingDir)
+      publisherProofKeyAlt, stagingDir)
     console.log(`Generated ${crxFile} with version number ${version}`)
   })
 }
@@ -322,5 +304,5 @@ util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
   getComponentDataList().forEach(
     generateCRXFile.bind(null, commander.binary, commander.endpoint,
       commander.region, keyDir,
-      commander.publisherProofKey))
+      commander.publisherProofKey, commander.publisherProofKeyAlt))
 })

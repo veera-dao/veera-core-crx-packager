@@ -4,30 +4,19 @@
 
 import commander from 'commander'
 import fs from 'fs-extra'
-import mkdirp from 'mkdirp'
+import { mkdirp } from 'mkdirp'
 import path from 'path'
-import replace from 'replace-in-file'
 import util from '../lib/util.js'
 import ntpUtil from '../lib/ntpUtil.js'
 
-const stageFiles = (version, outputDir) => {
-  // Copy resources and manifest file to outputDir.
-  const resourceDir = path.join(path.resolve(), 'build', 'ntp-background-images', 'resources')
-  console.log('copy dir:', resourceDir, ' to:', outputDir)
-  fs.copySync(resourceDir, outputDir)
-
-  // Fix up the manifest version
-  const originalManifest = getOriginalManifest()
-  const outputManifest = path.join(outputDir, 'manifest.json')
-  console.log('copy manifest file: ', originalManifest, ' to: ', outputManifest)
-  const replaceOptions = {
-    files: outputManifest,
-    from: /0\.0\.0/,
-    to: version
-  }
-  fs.copyFileSync(originalManifest, outputManifest)
-  replace.sync(replaceOptions)
+const getOriginalManifest = () => {
+  return path.join(path.resolve(), 'build', 'ntp-background-images', 'ntp-background-images-manifest.json')
 }
+
+const stageFiles = util.stageDir.bind(
+  undefined,
+  path.join(path.resolve(), 'build', 'ntp-background-images', 'resources'),
+  getOriginalManifest())
 
 const generateManifestFile = (publicKey) => {
   const manifestFile = getOriginalManifest()
@@ -41,12 +30,8 @@ const generateManifestFile = (publicKey) => {
   fs.writeFileSync(manifestFile, JSON.stringify(manifestContent))
 }
 
-const getOriginalManifest = () => {
-  return path.join(path.resolve(), 'build', 'ntp-background-images', 'ntp-background-images-manifest.json')
-}
-
 const generateCRXFile = (binary, endpoint, region, componentID, privateKeyFile,
-  publisherProofKey) => {
+  publisherProofKey, publisherProofKeyAlt) => {
   const rootBuildDir = path.join(path.resolve(), 'build', 'ntp-background-images')
   const stagingDir = path.join(rootBuildDir, 'staging')
   const crxOutputDir = path.join(rootBuildDir, 'output')
@@ -56,7 +41,7 @@ const generateCRXFile = (binary, endpoint, region, componentID, privateKeyFile,
     const crxFile = path.join(crxOutputDir, 'ntp-background-images.crx')
     stageFiles(version, stagingDir)
     util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey,
-      stagingDir)
+      publisherProofKeyAlt, stagingDir)
     console.log(`Generated ${crxFile} with version number ${version}`)
   })
 }
@@ -65,12 +50,12 @@ util.installErrorHandlers()
 
 util.addCommonScriptOptions(
   commander
-    .option('-k, --key <file>', 'file containing private key for signing crx file'))
+    .option('-k, --key-file <file>', 'file containing private key for signing crx file'))
   .parse(process.argv)
 
 let privateKeyFile = ''
-if (fs.existsSync(commander.key)) {
-  privateKeyFile = commander.key
+if (fs.existsSync(commander.keyFile)) {
+  privateKeyFile = commander.keyFile
 } else {
   throw new Error('Missing or invalid private key')
 }
@@ -79,5 +64,5 @@ util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
   const [publicKey, componentID] = ntpUtil.generatePublicKeyAndID(privateKeyFile)
   generateManifestFile(publicKey)
   generateCRXFile(commander.binary, commander.endpoint, commander.region,
-    componentID, privateKeyFile, commander.publisherProofKey)
+    componentID, privateKeyFile, commander.publisherProofKey, commander.publisherProofKeyAlt)
 })

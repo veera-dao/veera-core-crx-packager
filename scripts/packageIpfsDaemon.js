@@ -7,11 +7,9 @@
 
 import commander from 'commander'
 import fs from 'fs'
-import mkdirp from 'mkdirp'
 import path from 'path'
-import replace from 'replace-in-file'
 import util from '../lib/util.js'
-const ipfsVersion = '0.20.0'
+const ipfsVersion = '0.29.0'
 
 const getIpfsDaemonPath = (os, arch) => {
   const ipfsPath = path.join('build', 'ipfs-daemon-updater', 'downloads')
@@ -25,7 +23,7 @@ const getOriginalManifest = (platform) => {
 }
 
 const packageIpfsDaemon = (binary, endpoint, region, os, arch, key,
-  publisherProofKey) => {
+  publisherProofKey, publisherProofKeyAlt) => {
   const platform = `${os}-${arch}`
   const originalManifest = getOriginalManifest(platform)
   const parsedManifest = util.parseManifest(originalManifest)
@@ -39,28 +37,17 @@ const packageIpfsDaemon = (binary, endpoint, region, os, arch, key,
     const privateKeyFile = !fs.lstatSync(key).isDirectory() ? key : path.join(key, `ipfs-daemon-updater-${platform}.pem`)
     stageFiles(platform, ipfsDaemon, version, stagingDir)
     util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey,
-      stagingDir)
+      publisherProofKeyAlt, stagingDir)
     console.log(`Generated ${crxFile} with version number ${version}`)
   })
 }
 
 const stageFiles = (platform, ipfsDaemon, version, outputDir) => {
-  const originalManifest = getOriginalManifest(platform)
-  const outputManifest = path.join(outputDir, 'manifest.json')
-  const outputIpfsClient = path.join(outputDir, path.parse(ipfsDaemon).base)
-
-  const replaceOptions = {
-    files: outputManifest,
-    from: /0\.0\.0/,
-    to: version
-  }
-
-  mkdirp.sync(outputDir)
-
-  fs.copyFileSync(originalManifest, outputManifest)
-  fs.copyFileSync(ipfsDaemon, outputIpfsClient)
-
-  replace.sync(replaceOptions)
+  const files = [
+    { path: getOriginalManifest(platform), outputName: 'manifest.json' },
+    { path: ipfsDaemon }
+  ]
+  util.stageFiles(files, version, outputDir)
 }
 
 util.installErrorHandlers()
@@ -82,14 +69,10 @@ if (fs.existsSync(commander.keyFile)) {
 }
 
 util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
-  packageIpfsDaemon(commander.binary, commander.endpoint, commander.region,
-    'darwin', 'amd64', keyParam, commander.publisherProofKey)
-  packageIpfsDaemon(commander.binary, commander.endpoint, commander.region,
-    'darwin', 'arm64', keyParam, commander.publisherProofKey)
-  packageIpfsDaemon(commander.binary, commander.endpoint, commander.region,
-    'linux', 'amd64', keyParam, commander.publisherProofKey)
-  packageIpfsDaemon(commander.binary, commander.endpoint, commander.region,
-    'linux', 'arm64', keyParam, commander.publisherProofKey)
-  packageIpfsDaemon(commander.binary, commander.endpoint, commander.region,
-    'win32', 'amd64', keyParam, commander.publisherProofKey)
+  for (const os of ['darwin', 'linux', 'win32']) {
+    for (const arch of ['amd64', 'arm64']) {
+      packageIpfsDaemon(commander.binary, commander.endpoint, commander.region,
+        os, arch, keyParam, commander.publisherProofKey, commander.publisherProofKeyAlt)
+    }
+  }
 })

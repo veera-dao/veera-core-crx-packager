@@ -9,39 +9,24 @@ import path from 'path'
 import util from '../lib/util.js'
 import ntpUtil from '../lib/ntpUtil.js'
 
-const stageFiles = (version, outputDir) => {
-  const files = [
-    { path: getOriginalManifest(), outputName: 'manifest.json' },
-    { path: path.join(path.resolve(), 'build', 'ntp-super-referrer', 'resources', 'mapping-table', 'mapping-table.json') }
-  ]
-  util.stageFiles(files, version, outputDir)
-}
-
-const generateManifestFile = (publicKey) => {
-  const manifestFile = getOriginalManifest()
-  const manifestContent = {
-    description: 'Brave NTP Super Referrer mapping table component',
-    key: publicKey,
-    manifest_version: 2,
-    name: 'Brave NTP Super Referrer mapping table',
-    version: '0.0.0'
-  }
-  fs.writeFileSync(manifestFile, JSON.stringify(manifestContent))
-}
-
 const getOriginalManifest = () => {
-  return path.join(path.resolve(), 'build', 'ntp-super-referrer', 'mapping-table-manifest.json')
+  return path.join(path.resolve(), 'node_modules', 'playlist-component', 'manifest.json')
 }
+
+const stageFiles = util.stageDir.bind(
+  undefined,
+  path.join(path.resolve(), 'node_modules', 'playlist-component'),
+  getOriginalManifest())
 
 const generateCRXFile = (binary, endpoint, region, componentID, privateKeyFile,
   publisherProofKey, publisherProofKeyAlt) => {
-  const rootBuildDir = path.join(path.resolve(), 'build', 'ntp-super-referrer', 'mapping-table')
+  const rootBuildDir = path.join(path.resolve(), 'build', 'playlist')
   const stagingDir = path.join(rootBuildDir, 'staging')
   const crxOutputDir = path.join(rootBuildDir, 'output')
   mkdirp.sync(stagingDir)
   mkdirp.sync(crxOutputDir)
   util.getNextVersion(endpoint, region, componentID).then((version) => {
-    const crxFile = path.join(crxOutputDir, 'ntp-super-referrer-mapping-table.crx')
+    const crxFile = path.join(crxOutputDir, 'playlist.crx')
     stageFiles(version, stagingDir)
     util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey,
       publisherProofKeyAlt, stagingDir)
@@ -64,8 +49,7 @@ if (fs.existsSync(commander.keyFile)) {
 }
 
 util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
-  const [publicKey, componentID] = ntpUtil.generatePublicKeyAndID(privateKeyFile)
-  generateManifestFile(publicKey)
+  const [, componentID] = ntpUtil.generatePublicKeyAndID(privateKeyFile)
   generateCRXFile(commander.binary, commander.endpoint, commander.region,
     componentID, privateKeyFile, commander.publisherProofKey, commander.publisherProofKeyAlt)
 })

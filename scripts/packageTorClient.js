@@ -9,9 +9,8 @@ import commander from 'commander'
 import crypto from 'crypto'
 import { execSync } from 'child_process'
 import fs from 'fs'
-import mkdirp from 'mkdirp'
+import { mkdirp } from 'mkdirp'
 import path from 'path'
-import replace from 'replace-in-file'
 import util from '../lib/util.js'
 
 // Downloads the current (platform-specific) Tor client from S3
@@ -19,8 +18,8 @@ const downloadTorClient = (platform) => {
   const torPath = path.join('build', 'tor-client-updater', 'downloads')
   const torS3Prefix = process.env.S3_DEMO_TOR_PREFIX
 
-  const torVersion = '0.4.7.13'
-  const braveVersion = '0'
+  const torVersion = '0.4.8.10'
+  const braveVersion = '2'
   const exeSuffix = platform === 'win32' ? '.exe' : ''
   const torFilename = `tor-${torVersion}-${platform}-brave-${braveVersion}`
   const torURL = torS3Prefix + torFilename + exeSuffix
@@ -29,16 +28,16 @@ const downloadTorClient = (platform) => {
 
   switch (platform) {
     case 'darwin':
-      sha512Tor = 'cd006a62607698db91c339d715509021adaf66ba37ad455a4ef085c5c3f6c420081baf5ccdf2b65c889a641abbdfb757737541d3a16029335ce3a5d85379bbb4'
+      sha512Tor = 'ac8b5ecde7dc50c924529c795849c10af3e778f259bb5cc88fc00d5108051880a7b001a3b252d7384a226014f14d0fff74b6ac1ac0741db88640fb649af03e85'
       break
     case 'linux':
-      sha512Tor = '61734543d2c7855cc37ca8d1d795ffadfbd53d05213e53c4e653ef2e257b893747e76127b1c1c1ef8fe252876e5ce79acdc5706d03607e77bde33aaf4a784343'
+      sha512Tor = 'ae58bc91e633544edb7398bc8695998690d9a38e8de4c69735096284b89e5ade93d2066143063e6149367458e0da3ce755764437d0f6a2dfab2020702d42c70a'
       break
     case 'linux-arm64':
-      sha512Tor = '86b57bbfdd0276f0b667da17f701cece42ebb91c285668d38cb3f63727f9a7f85688a6ce7e4044dedf678282b3e361ba6ae05bd801674830bd19f3678b49397a'
+      sha512Tor = '2f9d2886fe268086c894dce6e3558f63de1666408f4f2fddccb593b9ea629d2a40cfdf99039fe8d40849a836108d34166220e4d99d6c7c1dd50a0e369adaa87c'
       break
     case 'win32':
-      sha512Tor = 'e39bdf120030cbd8cfa809352b88bfe276406f7c317c10f0e0829e8ccf3160346ea8c73a6712990fe71f74caa988c4ece498cf2093b45b06db08ad53ab0b4be9'
+      sha512Tor = 'd9c1e88446bc40b2ef32307317991e248ae02024cf01a84b7ded8871cbdb9b7f82061f96334f540fe686f6f25f39b05d5b40a85a662baa31d4a088f5f1f4e9e3'
       break
     default:
       throw new Error('Tor client download failed; unrecognized platform: ' + platform)
@@ -69,7 +68,7 @@ const getOriginalManifest = (platform) => {
 }
 
 const packageTorClient = (binary, endpoint, region, platform, key,
-  publisherProofKey) => {
+  publisherProofKey, publisherProofKeyAlt) => {
   const originalManifest = getOriginalManifest(platform)
   const parsedManifest = util.parseManifest(originalManifest)
   const id = util.getIDFromBase64PublicKey(parsedManifest.key)
@@ -82,31 +81,18 @@ const packageTorClient = (binary, endpoint, region, platform, key,
     const privateKeyFile = !fs.lstatSync(key).isDirectory() ? key : path.join(key, `tor-client-updater-${platform}.pem`)
     stageFiles(platform, torClient, version, stagingDir)
     util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey,
-      stagingDir)
+      publisherProofKeyAlt, stagingDir)
     console.log(`Generated ${crxFile} with version number ${version}`)
   })
 }
 
 const stageFiles = (platform, torClient, version, outputDir) => {
-  const originalManifest = getOriginalManifest(platform)
-  const outputManifest = path.join(outputDir, 'manifest.json')
-  const outputTorClient = path.join(outputDir, path.parse(torClient).base)
-  const outputTorrc = path.join(outputDir, 'tor-torrc')
-  const inputTorrc = path.join('resources', 'tor', 'torrc')
-
-  const replaceOptions = {
-    files: outputManifest,
-    from: /0\.0\.0/,
-    to: version
-  }
-
-  mkdirp.sync(outputDir)
-
-  fs.copyFileSync(originalManifest, outputManifest)
-  fs.copyFileSync(torClient, outputTorClient)
-  fs.copyFileSync(inputTorrc, outputTorrc)
-
-  replace.sync(replaceOptions)
+  const files = [
+    { path: getOriginalManifest(platform), outputName: 'manifest.json' },
+    { path: torClient },
+    { path: path.join('resources', 'tor', 'torrc'), outputName: 'tor-torrc' }
+  ]
+  util.stageFiles(files, version, outputDir)
 }
 
 // Does a hash comparison on a file against a given hash
@@ -136,12 +122,8 @@ if (fs.existsSync(commander.keyFile)) {
 }
 
 util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
-  packageTorClient(commander.binary, commander.endpoint, commander.region,
-    'darwin', keyParam, commander.publisherProofKey)
-  packageTorClient(commander.binary, commander.endpoint, commander.region,
-    'linux', keyParam, commander.publisherProofKey)
-  packageTorClient(commander.binary, commander.endpoint, commander.region,
-    'linux-arm64', keyParam, commander.publisherProofKey)
-  packageTorClient(commander.binary, commander.endpoint, commander.region,
-    'win32', keyParam, commander.publisherProofKey)
+  for (const platform of ['darwin', 'linux', 'linux-arm64', 'win32']) {
+    packageTorClient(commander.binary, commander.endpoint, commander.region,
+      platform, keyParam, commander.publisherProofKey, commander.publisherProofKeyAlt)
+  }
 })

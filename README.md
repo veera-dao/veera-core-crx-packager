@@ -1,16 +1,16 @@
-# Veera Core CRX Packager
+# Brave Core CRX Packager
 
-The CRX Packager creates and packages CRX files for the components and extensions included with the Veera browser.
+The CRX Packager creates and packages CRX files for the components and extensions included with the Brave browser.
 
 ## Development
 
 When developing a new component extension, you must generate a new unique extension ID and public/private key pair. You can do that by
 
 1. Generating a new keypair with `openssl genrsa 2048 | openssl pkcs8 -topk8 -nocrypt -out key.pem`
-2. Storing the new PEM in 1Password for Teams, follow instructions on this [link](https://github.com/veera-dao/veera-devops/blob/main/crx/README.md) to upload files to 1Password
+2. Storing the new PEM in 1Password for Teams
 3. Generating the public key for the `manifest.json` with `openssl rsa -in key.pem -pubout -outform DER | openssl base64 -A`
 4. Generating the component ID with `openssl rsa -in key.pem -pubout -outform DER | shasum -a 256 | head -c32 | tr 0-9a-f a-p`
-5. Updating https://github.com/veera/adblock-resources/blob/master/filter_lists/regional.json with the right component_id and base64_public_key (if this is for AdBlock)
+5. Updating https://github.com/brave/adblock-resources/blob/master/filter_lists/regional.json with the right component_id and base64_public_key (if this is for AdBlock)
 5. Updating the CRX packager to use the new PEM
 
 ## Cloning and Installation
@@ -18,8 +18,8 @@ When developing a new component extension, you must generate a new unique extens
 Clone the repository and install Node dependencies:
 
 ```bash
-git clone git@github.com:veera-dao/veera-core-crx-packager.git
-cd veera-core-crx-packager
+git clone git@github.com:brave/brave-core-crx-packager.git
+cd brave-core-crx-packager
 git submodule init
 git submodule update
 # If you use NVM to switch between Node versions
@@ -28,7 +28,7 @@ CXXFLAGS="--std=c++17" npm install
 ```
 
 Currently
-* Node 16.x is required.
+* Node 20.x is required.
 * Python is required.
 * Rust is required. (for ad-block)
 
@@ -57,8 +57,7 @@ where:
 The currently supported component extension types are:
 
 * `ad-block`
-* `https-everywhere`
-* `tor-client` (not supported)
+* `tor-client`
 * `local-data-files` (formerly `tracking-protection`)
 
 #### Testing locally without signing
@@ -102,8 +101,18 @@ npm run generate-ntp-super-referrer -- --data-url <s3 buckets url> --super-refer
 Then, package assets to crx file for specific super referrer. It will generate component crx file at `./build/ntp-super-referrer/output`.
 
 ```bash
-npm run package-ntp-super-referrer -- --binary "/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome" --key ntp-super-referrer-{super-referrer-code}.pem --super-referrer-name <super-referrer-code>
+npm run package-ntp-super-referrer -- --binary "/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome" --key-file ntp-super-referrer-{super-referrer-code}.pem --super-referrer-name <super-referrer-code>
 ```
+
+## Generating differential updates
+
+To generate differential updates using [puffin](https://chromium.googlesource.com/chromium/src/+/main/third_party/puffin/) use the following command to fetch the last 10 versions and generate the patch files:
+
+```bash
+aws-vault exec extensions-dev-role --  npm run generate-puffpatches -- --crx-directory ./build/ntp-sponsored-images/output -p 10
+```
+
+*Note: `puffin` binary is required*
 
 ## Uploading
 
@@ -168,20 +177,6 @@ To upload the component, pass crx directory that has generated crx file and endp
 ```bash
 aws exec extensions-dev-role -- npm run upload-user-model-installer-updates -- --crx-directory ./build/user-model-installer/output
 ```
-
-### Importing Chrome Web Store extensions
-
-To import the current list of supported Chrome Web Store extensions, use the following command:
-
-```bash
-npm run import-cws-components -- --endpoint <endpoint>
-```
-
-where:
-
-* `endpoint` is the DynamoDB endpoint (use http://localhost:8000 if setup locally)
-
-This will download the supported extensions from the Chrome Web Store and upload them to S3.
 
 ## Versioning
 

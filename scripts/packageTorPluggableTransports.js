@@ -8,9 +8,8 @@
 import commander from 'commander'
 import { execSync } from 'child_process'
 import fs from 'fs'
-import mkdirp from 'mkdirp'
+import { mkdirp } from 'mkdirp'
 import path from 'path'
-import replace from 'replace-in-file'
 import util from '../lib/util.js'
 
 const TOR_PLUGGABLE_TRANSPORTS_UPDATER = 'tor-pluggable-transports-updater'
@@ -46,7 +45,7 @@ const getOriginalManifest = (platform) => {
   return path.join('manifests', TOR_PLUGGABLE_TRANSPORTS_UPDATER, `${TOR_PLUGGABLE_TRANSPORTS_UPDATER}-${platform}-manifest.json`)
 }
 
-const packageTorPluggableTransports = (binary, endpoint, region, platform, key, publisherProofKey) => {
+const packageTorPluggableTransports = (binary, endpoint, region, platform, key, publisherProofKey, publisherProofKeyAlt) => {
   const originalManifest = getOriginalManifest(platform)
   const parsedManifest = util.parseManifest(originalManifest)
   const id = util.getIDFromBase64PublicKey(parsedManifest.key)
@@ -60,30 +59,18 @@ const packageTorPluggableTransports = (binary, endpoint, region, platform, key, 
     const crxFile = path.join(crxOutputDir, `${TOR_PLUGGABLE_TRANSPORTS_UPDATER}-${platform}.crx`)
     const privateKeyFile = !fs.lstatSync(key).isDirectory() ? key : path.join(key, `${TOR_PLUGGABLE_TRANSPORTS_UPDATER}-${platform}.pem`)
     stageFiles(platform, snowflake, obfs4, version, stagingDir)
-    util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey, stagingDir)
+    util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey, publisherProofKeyAlt, stagingDir)
     console.log(`Generated ${crxFile} with version number ${version}`)
   })
 }
 
 const stageFiles = (platform, snowflake, obfs4, version, outputDir) => {
-  const originalManifest = getOriginalManifest(platform)
-  const outputManifest = path.join(outputDir, 'manifest.json')
-  const outputSnowflake = path.join(outputDir, path.parse(snowflake).base)
-  const outputObfs4 = path.join(outputDir, path.parse(obfs4).base)
-
-  const replaceOptions = {
-    files: outputManifest,
-    from: /0\.0\.0/,
-    to: version
-  }
-
-  mkdirp.sync(outputDir)
-
-  fs.copyFileSync(originalManifest, outputManifest)
-  fs.copyFileSync(snowflake, outputSnowflake)
-  fs.copyFileSync(obfs4, outputObfs4)
-
-  replace.sync(replaceOptions)
+  const files = [
+    { path: getOriginalManifest(platform), outputName: 'manifest.json' },
+    { path: snowflake },
+    { path: obfs4 }
+  ]
+  util.stageFiles(files, version, outputDir)
 }
 
 util.installErrorHandlers()
@@ -105,10 +92,8 @@ if (fs.existsSync(commander.keyFile)) {
 }
 
 util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
-  packageTorPluggableTransports(commander.binary, commander.endpoint, commander.region,
-    'darwin', keyParam, commander.publisherProofKey)
-  packageTorPluggableTransports(commander.binary, commander.endpoint, commander.region,
-    'linux', keyParam, commander.publisherProofKey)
-  packageTorPluggableTransports(commander.binary, commander.endpoint, commander.region,
-    'win32', keyParam, commander.publisherProofKey)
+  for (const platform of ['darwin', 'linux', 'win32']) {
+    packageTorPluggableTransports(commander.binary, commander.endpoint, commander.region,
+      platform, keyParam, commander.publisherProofKey, commander.publisherProofKeyAlt)
+  }
 })

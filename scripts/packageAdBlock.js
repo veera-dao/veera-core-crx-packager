@@ -9,33 +9,19 @@
 import commander from 'commander'
 import fs from 'fs-extra'
 import path from 'path'
-import replace from 'replace-in-file'
 import util from '../lib/util.js'
-import { regionalCatalogComponentId, resourcesComponentId } from '../lib/adBlockRustUtils.js'
+import { getListCatalog, regionalCatalogComponentId, resourcesComponentId } from '../lib/adBlockRustUtils.js'
 
 async function stageFiles (version, outputDir) {
-  // ad-block components are in the correct folder
-  // we don't need to stage the crx files
-  const resourceFileName = 'resources.json'
-  const resourceJsonPath = path.join('build', 'ad-block-updater', 'default', resourceFileName)
-  const outputManifest = path.join(outputDir, 'manifest.json')
-  const outputResourceJSON = path.join(outputDir, resourceFileName)
-  const replaceOptions = {
-    files: outputManifest,
-    from: /0\.0\.0/,
-    to: version
-  }
-  replace.sync(replaceOptions)
-  // Only copy resources.json into components with a UUID. We will migrate to
-  // using component IDs instead of UUIDs for directory names.
-  // UUIDs are 36 characters, component IDs are 32.
-  if (path.basename(outputDir).length > 32 && resourceJsonPath !== outputResourceJSON) {
-    fs.copyFileSync(resourceJsonPath, outputResourceJSON)
-  }
+  // ad-block components are already written in the output directory
+  // so we don't need to stage anything
+  const originalManifest = path.join(outputDir, 'manifest.json')
+  // note - in-place manifest replacement, unlike other components
+  util.copyManifestWithVersion(originalManifest, outputDir, version)
 }
 
 const postNextVersionWork = (componentSubdir, key, publisherProofKey,
-  binary, localRun, version, contentHash) => {
+  publisherProofKeyAlt, binary, localRun, version, contentHash) => {
   const stagingDir = path.join('build', 'ad-block-updater', componentSubdir)
   const crxOutputDir = path.join('build', 'ad-block-updater')
   const crxFile = path.join(crxOutputDir, `ad-block-updater-${componentSubdir}.crx`)
@@ -48,7 +34,7 @@ const postNextVersionWork = (componentSubdir, key, publisherProofKey,
     if (!localRun) {
       const privateKeyFile = path.join(key, `ad-block-updater-${componentSubdir}.pem`)
       util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey,
-        stagingDir)
+        publisherProofKeyAlt, stagingDir)
     }
     if (contentHash !== undefined) {
       fs.writeFileSync(contentHashFile, contentHash)
@@ -63,17 +49,24 @@ const getOriginalManifest = (componentSubdir) => {
 }
 
 const processComponent = (binary, endpoint, region, keyDir,
-  publisherProofKey, localRun, componentSubdir) => {
+  publisherProofKey, publisherProofKeyAlt, localRun, componentSubdir) => {
   const originalManifest = getOriginalManifest(componentSubdir)
+
+  // TODO - previous download failures should prevent the attempt to package the component.
+  if (!fs.existsSync(originalManifest)) {
+    console.warn(`Missing manifest for ${componentSubdir}. Skipping.`)
+    return
+  }
+
   const parsedManifest = util.parseManifest(originalManifest)
   const id = util.getIDFromBase64PublicKey(parsedManifest.key)
 
   let fileToHash
   if (componentSubdir === regionalCatalogComponentId) {
-    fileToHash = 'regional_catalog.json'
+    fileToHash = 'list_catalog.json'
   } else if (componentSubdir === resourcesComponentId) {
     fileToHash = 'resources.json'
-  } else if (componentSubdir.length === 32) {
+  } else {
     fileToHash = 'list.txt'
   }
 
@@ -87,33 +80,35 @@ const processComponent = (binary, endpoint, region, keyDir,
     util.getNextVersion(endpoint, region, id, contentHash).then((version) => {
       if (version !== undefined) {
         postNextVersionWork(componentSubdir, keyDir, publisherProofKey,
-          binary, localRun, version, contentHash)
+          publisherProofKeyAlt, binary, localRun, version, contentHash)
       } else {
         console.log('content for ' + id + ' was not updated, skipping!')
       }
     })
   } else {
     postNextVersionWork(componentSubdir, undefined, publisherProofKey,
-      binary, localRun, '1.0.0', contentHash)
+      publisherProofKeyAlt, binary, localRun, '1.0.0', contentHash)
   }
 }
 
-const getComponentList = () => {
-  return fs.readdirSync(path.join('build', 'ad-block-updater'))
-    .filter(dir => {
-      return fs.existsSync(path.join('build', 'ad-block-updater', dir, 'manifest.json'))
-    })
-    .reduce((acc, val) => {
-      acc.push(path.join(val))
-      return acc
-    }, [])
+const getComponentList = async () => {
+  const output = [
+    regionalCatalogComponentId,
+    resourcesComponentId
+  ]
+  const catalog = await getListCatalog()
+  catalog.forEach(entry => {
+    output.push(entry.list_text_component.component_id)
+  })
+  return output
 }
 
-const processJob = (commander, keyDir) => {
-  getComponentList()
+const processJob = async (commander, keyDir) => {
+  (await getComponentList())
     .forEach(processComponent.bind(null, commander.binary, commander.endpoint,
       commander.region, keyDir,
       commander.publisherProofKey,
+      commander.publisherProofKeyAlt,
       commander.localRun))
 }
 
@@ -132,8 +127,8 @@ if (!commander.localRun) {
   } else {
     throw new Error('Missing or invalid private key file/directory')
   }
-  util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
-    processJob(commander, keyDir)
+  util.createTableIfNotExists(commander.endpoint, commander.region).then(async () => {
+    await processJob(commander, keyDir)
   })
 } else {
   processJob(commander, undefined)

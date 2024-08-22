@@ -2,8 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Engine, FilterFormat, FilterSet, RuleTypes } from 'adblock-rs'
-import { generateResourcesFile, getDefaultLists, getRegionalLists, resourcesComponentId, regionalCatalogComponentId } from '../lib/adBlockRustUtils.js'
+import {
+  generateResourcesFile,
+  getListCatalog,
+  getDefaultLists,
+  getRegionalLists,
+  preprocess,
+  resourcesComponentId,
+  regionalCatalogComponentId,
+  sanityCheckList
+} from '../lib/adBlockRustUtils.js'
+import Sentry from '../lib/sentry.js'
 import util from '../lib/util.js'
 import path from 'path'
 import fs from 'fs'
@@ -42,26 +51,22 @@ const enforceBraveDirectives = (title, data) => {
   }
 }
 
-/**
- * Parses the passed in filter rule data and serializes a data file to disk.
- *
- * @param filterRuleData An array of { format, data, includeRedirectUrls, ruleTypes } where format is one of `adblock-rust`'s supported filter parsing formats and data is a newline-separated list of such filters.
- * includeRedirectUrls is a boolean: https://github.com/brave/adblock-rust/pull/184. We only support redirect URLs on filter lists we maintain and trust.
- * ruleTypes was added with https://github.com/brave/brave-core-crx-packager/pull/298 and allows for { RuleTypes.ALL, RuleTypes.NETWORK_ONLY, RuleTypes.COSMETIC_ONLY }
- * @param outputDATFilename The filename of the DAT file to create.
- */
-const generateDataFileFromLists = (filterRuleData, outputDATFilename, outSubdir, defaultRuleType = RuleTypes.ALL) => {
-  const filterSet = new FilterSet(false)
-  for (let { title, format, data, includeRedirectUrls, ruleTypes } of filterRuleData) {
-    includeRedirectUrls = Boolean(includeRedirectUrls)
-    ruleTypes = ruleTypes || defaultRuleType
-    const parseOpts = { format, includeRedirectUrls, ruleTypes }
-    filterSet.addFilters(enforceBraveDirectives(title, data).split('\n'), parseOpts)
-  }
-  const client = new Engine(filterSet, true)
-  const arrayBuffer = client.serializeCompressed()
-  const outPath = getOutPath(outputDATFilename, outSubdir)
-  fs.writeFileSync(outPath, Buffer.from(arrayBuffer))
+const removeIncompatibleRules = (listBuffer) => {
+  listBuffer.data = listBuffer.data.split('\n').filter(line => {
+    line = line.trim()
+    // Prior to adblock-rust 0.8.7, scriptlet arguments with trailing escaped commas can cause crashes.
+    if (line.indexOf('+js(') >= 0 && line.endsWith('\\,)')) {
+      return false
+    }
+    // The rules from this commit don't include valid CSS; at the time of writing,
+    // Brave throws an error from the generic filter injection script if any CSS is invalid.
+    // https://github.com/uBlockOrigin/uAssets/commit/6eaa9dd46371478d76371426cb99f75d99c7402d
+    if (line.startsWith('##') >= 0 && line.indexOf('head\\"') >= 0) {
+      return false
+    }
+    return true
+  }).join('\n')
+  return listBuffer
 }
 
 /**
@@ -73,32 +78,39 @@ const generatePlaintextListFromLists = (listBuffers, outSubdir) => {
 }
 
 /**
- * Convenience function that generates component files for a given catalog entry
+ * Convenience function that generates component files for a given catalog entry.
+ *
+ * If any list source cannot be downloaded, the promise will resolve but the new files will _not_ be generated.
  *
  * @param entry the corresponding entry directly from one of Brave's list catalogs
  * @param doIos boolean, whether or not filters for iOS should be created (currently only used by default list)
- * @return a Promise which resolves if successful or rejects if there's an error.
+ * @return a Promise which resolves upon completion
  */
-const generateDataFilesForCatalogEntry = (entry, doIos = false) => {
+const generateDataFilesForCatalogEntry = (entry) => {
   const lists = entry.sources
-  // default adblock DAT component requires this for historical reasons
-  const outputDATFilename = (entry.uuid === 'default') ? 'rs-ABPFilterParserData.dat' : `rs-${entry.uuid}.dat`
 
   const promises = []
   lists.forEach((l) => {
     console.log(`${entry.langs} ${l.url}...`)
-    promises.push(util.fetchTextFromURL(l.url).then(data => ({ title: l.title || entry.title, format: l.format, data })))
+    promises.push(util.fetchTextFromURL(l.url)
+      .then(data => ({ title: l.title || entry.title, format: l.format, data }))
+      .then(async listBuffer => {
+        const compat = removeIncompatibleRules(preprocess(listBuffer))
+        await sanityCheckList(compat)
+        return compat
+      })
+    )
   })
-  let p = Promise.all(promises)
-  p = p.then((listBuffers) => {
-    generatePlaintextListFromLists(listBuffers, entry.list_text_component.component_id)
-    generateDataFileFromLists(listBuffers, outputDATFilename, entry.uuid)
-    if (doIos) {
-      // for iOS team - compile cosmetic filters only
-      generateDataFileFromLists(listBuffers, 'ios-cosmetic-filters.dat', 'test-data', RuleTypes.COSMETIC_ONLY)
-    }
-  })
-  return p
+  return Promise.all(promises)
+    .then(
+      listBuffers => generatePlaintextListFromLists(listBuffers, entry.list_text_component.component_id),
+      e => {
+        console.error(`Not publishing a new version of ${entry.title} due to failure downloading a source: ${e.message}`)
+        if (Sentry) {
+          Sentry.captureException(e, { level: 'warning' })
+        }
+      }
+    )
 }
 
 /**
@@ -111,9 +123,12 @@ const generateDataFilesForAllRegions = () => {
   return getRegionalLists().then(regions => {
     return new Promise((resolve, reject) => {
       const catalogString = JSON.stringify(regions)
-      fs.writeFileSync(getOutPath('regional_catalog.json', 'default'), catalogString)
       fs.writeFileSync(getOutPath('regional_catalog.json', regionalCatalogComponentId), catalogString)
-      resolve()
+      getListCatalog().then(listCatalog => {
+        const catalogString = JSON.stringify(listCatalog)
+        fs.writeFileSync(getOutPath('list_catalog.json', regionalCatalogComponentId), catalogString)
+        resolve()
+      })
     }).then(() => Promise.all(regions.map(region =>
       generateDataFilesForCatalogEntry(region)
     )))
@@ -125,37 +140,10 @@ const generateDataFilesForResourcesComponent = () => {
 }
 
 const generateDataFilesForDefaultAdblock = () => getDefaultLists()
-  // TODO convert to map/Promise.all once 'ios-cosmetic-filters.dat' is no longer required
-  .then(defaultLists => generateDataFilesForCatalogEntry(defaultLists[0], true)
-    .then(() => generateDataFilesForCatalogEntry(defaultLists[1], false)))
-  // default adblock DAT component requires this for historical reasons
-  .then(() => generateResourcesFile(getOutPath('resources.json', 'default')))
-
-// For adblock-rust-ffi, included just as a char array via hexdump
-const generateTestDataFile1 =
-  generateDataFileFromLists.bind(null, [{ format: FilterFormat.STANDARD, data: 'ad-banner' }], 'ad-banner.dat', 'test-data')
-// For adblock-rust-ffi, included just as a char array via hexdump
-const generateTestDataFile2 =
-  generateDataFileFromLists.bind(null, [{ format: FilterFormat.STANDARD, data: 'ad-banner$tag=abc' }], 'ad-banner-tag-abc.dat', 'test-data')
-// For brave-core ./data/adblock-data/adblock-default/rs-ABPFilterParserData.dat
-// For brave-core ./data/adblock-data/adblock-v3/rs-ABPFilterParserData.dat
-const generateTestDataFile3 =
-  generateDataFileFromLists.bind(null, [{ format: FilterFormat.STANDARD, data: 'adbanner\nad_banner' }], 'rs-default.dat', 'test-data')
-// For brave-core ./data/adblock-data/adblock-v4/rs-ABPFilterParserData.dat
-const generateTestDataFile4 =
-  generateDataFileFromLists.bind(null, [{ format: FilterFormat.STANDARD, data: 'v4_specific_banner.png' }], 'rs-v4.dat', 'test-data')
-// For brave-core ./brave/test/data/adblock-data/adblock-regional/
-// 9852EFC4-99E4-4F2D-A915-9C3196C7A1DE/rs-9852EFC4-99E4-4F2D-A915-9C3196C7A1DE.dat
-const generateTestDataFile5 =
-  generateDataFileFromLists.bind(null, [{ format: FilterFormat.STANDARD, data: 'ad_fr.png' }], 'rs-9852EFC4-99E4-4F2D-A915-9C3196C7A1DE.dat', 'test-data')
+  .then(defaultLists => Promise.all(defaultLists.map(list => generateDataFilesForCatalogEntry(list))))
 
 generateDataFilesForDefaultAdblock()
   .then(generateDataFilesForResourcesComponent)
-  .then(generateTestDataFile1)
-  .then(generateTestDataFile2)
-  .then(generateTestDataFile3)
-  .then(generateTestDataFile4)
-  .then(generateTestDataFile5)
   .then(generateDataFilesForAllRegions)
   .then(() => {
     console.log('Thank you for updating the data files, don\'t forget to upload them too!')

@@ -4,30 +4,17 @@
 
 import commander from 'commander'
 import fs from 'fs-extra'
-import mkdirp from 'mkdirp'
+import { mkdirp } from 'mkdirp'
 import path from 'path'
-import replace from 'replace-in-file'
 import util from '../lib/util.js'
 import ntpUtil from '../lib/ntpUtil.js'
 
 const stageFiles = (superReferrerName, version, outputDir) => {
-  // Copy resources and manifest file to outputDir.
-  // Copy resource files
-  const resourceDir = path.join(path.resolve(), 'build', 'ntp-super-referrer', 'resources', superReferrerName, '/')
-  console.log('copy dir:', resourceDir, ' to:', outputDir)
-  fs.copySync(resourceDir, outputDir)
-
-  // Fix up the manifest version
-  const originalManifest = getOriginalManifest(superReferrerName)
-  const outputManifest = path.join(outputDir, 'manifest.json')
-  console.log('copy manifest file: ', originalManifest, ' to: ', outputManifest)
-  const replaceOptions = {
-    files: outputManifest,
-    from: /0\.0\.0/,
-    to: version
-  }
-  fs.copyFileSync(originalManifest, outputManifest)
-  replace.sync(replaceOptions)
+  util.stageDir(
+    path.join(path.resolve(), 'build', 'ntp-super-referrer', 'resources', superReferrerName, '/'),
+    getOriginalManifest(superReferrerName),
+    version,
+    outputDir)
 }
 
 const generateManifestFile = (superReferrerName, publicKey) => {
@@ -47,7 +34,7 @@ const getOriginalManifest = (superReferrerName) => {
 }
 
 const generateCRXFile = (binary, endpoint, region, superReferrerName,
-  componentID, privateKeyFile, publisherProofKey) => {
+  componentID, privateKeyFile, publisherProofKey, publisherProofKeyAlt) => {
   const rootBuildDir = path.join(path.resolve(), 'build', 'ntp-super-referrer')
   const stagingDir = path.join(rootBuildDir, 'staging', superReferrerName)
   const crxOutputDir = path.join(rootBuildDir, 'output')
@@ -57,7 +44,7 @@ const generateCRXFile = (binary, endpoint, region, superReferrerName,
     const crxFile = path.join(crxOutputDir, `ntp-super-referrer-${superReferrerName}.crx`)
     stageFiles(superReferrerName, version, stagingDir)
     util.generateCRXFile(binary, crxFile, privateKeyFile, publisherProofKey,
-      stagingDir)
+      publisherProofKeyAlt, stagingDir)
     console.log(`Generated ${crxFile} with version number ${version}`)
   })
 }
@@ -67,12 +54,12 @@ util.installErrorHandlers()
 util.addCommonScriptOptions(
   commander
     .option('-n, --super-referrer-name <name>', 'super referrer name for this component')
-    .option('-k, --key <file>', 'file containing private key for signing crx file'))
+    .option('-k, --key-file <file>', 'file containing private key for signing crx file'))
   .parse(process.argv)
 
 let privateKeyFile = ''
-if (fs.existsSync(commander.key)) {
-  privateKeyFile = commander.key
+if (fs.existsSync(commander.keyFile)) {
+  privateKeyFile = commander.keyFile
 } else {
   throw new Error('Missing or invalid private key')
 }
@@ -82,5 +69,5 @@ util.createTableIfNotExists(commander.endpoint, commander.region).then(() => {
   generateManifestFile(commander.superReferrerName, publicKey)
   generateCRXFile(commander.binary, commander.endpoint, commander.region,
     commander.superReferrerName, componentID, privateKeyFile,
-    commander.publisherProofKey)
+    commander.publisherProofKey, commander.publisherProofKeyAlt)
 })
